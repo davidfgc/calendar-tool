@@ -1,0 +1,30 @@
+# Plantilla de configuración de calendar-tool.
+# Copia este archivo a 'accounts.toml' y ajústalo a tus cuentas.
+# NO pongas secretos aquí: 'credentials_file' y 'token_file' apuntan a archivos
+# en disco, no contienen las claves.
+
+# Zona horaria IANA usada para decidir "hoy" y "ya pasó" (opcional; por defecto, la local).
+timezone = "America/Los_Angeles"
+
+# Formato de salida por defecto: "json" o "csv" (opcional; por defecto, "json").
+output_format = "json"
+
+# --- Cuenta personal (OAuth de usuario) ---
+[accounts.personal]
+credentials_file = "~/.config/calendar-tool/personal_credentials.json"
+token_file = "~/.config/calendar-tool/personal_token.json"
+# calendars = ["primary"]   # opcional; si se omite, se leen TODOS los calendarios de la cuenta.
+
+# --- Cuenta de trabajo (puede tener restricciones de la organización) ---
+# Usa su propio OAuth client (credentials_file) para sortear bloqueos de apps de terceros.
+[accounts.trabajo]
+credentials_file = "~/.config/calendar-tool/trabajo_credentials.json"
+token_file = "~/.config/calendar-tool/trabajo_token.json"
+calendars = ["primary"]
+
+# --- Cuenta de cliente vía cuenta de servicio con delegación de dominio (opcional) ---
+# Útil cuando la organización del cliente provee una service account en vez de OAuth de usuario.
+# [accounts.cliente-x]
+# service_account_file = "~/.config/calendar-tool/cliente_x_sa.json"
+# subject = "tu-usuario@cliente-x.com"
+# calendars = ["primary"]
