@@ -8,8 +8,10 @@ tomen nuevas decisiones técnicas.
 
 Herramienta de línea de comandos (script) que se conecta **en modo solo lectura**
 a calendarios de Google —de varias cuentas (personal, trabajo, cliente) y varios
-calendarios dentro de cada una— para obtener los eventos de hoy aún pendientes y
-volcarlos a un archivo (JSON/CSV). Ver `docs/specs/` para el detalle de producto.
+calendarios dentro de cada una— y volcarlos a un archivo (JSON/CSV). Por defecto
+obtiene los eventos de hoy aún pendientes; con `--range month` obtiene todos los
+eventos del mes actual (en ambos modos se omiten los eventos de todo el día). Ver
+`docs/specs/` para el detalle de producto.
 
 ## Stack base (decidido)
 

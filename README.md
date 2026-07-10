@@ -2,9 +2,10 @@
 
 Herramienta de línea de comandos que se conecta **en modo solo lectura** a uno o
 varios calendarios de Google —de distintas cuentas (personal, trabajo, cliente) y
-de varios calendarios dentro de cada una— para obtener los **eventos de hoy que aún
-no han terminado** y volcarlos, combinados y ordenados por hora, a un archivo
-(JSON o CSV).
+de varios calendarios dentro de cada una— y vuelca los eventos, combinados y
+ordenados por hora, a un archivo (JSON o CSV). Por defecto muestra los **eventos de
+hoy que aún no han terminado**; con `--range month` muestra **todos los eventos del
+mes actual**. En ambos modos se omiten los eventos de todo el día.
 
 > Solo lectura por diseño: usa el scope `calendar.readonly`. La herramienta nunca
 > crea, modifica ni elimina eventos.
@@ -57,6 +58,9 @@ uv run calendar-tool --config accounts.toml
 Opciones útiles:
 
 ```bash
+# Ver todos los eventos del mes actual (salida por defecto: events-AAAA-MM.json)
+uv run calendar-tool --range month
+
 # Limitar a cuentas/calendarios concretos
 uv run calendar-tool --account trabajo --calendar primary
 
@@ -70,10 +74,16 @@ uv run calendar-tool --credentials creds.json --token tok.json
 uv run calendar-tool --include-working-location
 ```
 
-Las entradas de **Ubicación de trabajo** (eventos de todo el día "Home"/"Office",
-`eventType: workingLocation`) se **excluyen por defecto** porque no son eventos a los
-que se asista; usa `--include-working-location` si las quieres en la salida. Cada
-evento del archivo incluye su `event_type` para que puedas distinguirlos.
+Los **eventos de todo el día** no se incluyen en la salida (en ninguno de los dos
+modos). Las entradas de **Ubicación de trabajo** ("Home"/"Office",
+`eventType: workingLocation`) son un caso aparte: aunque también son de todo el día,
+se **excluyen por defecto** porque no son eventos a los que se asista, pero puedes
+incluirlas con `--include-working-location`. Cada evento del archivo incluye su
+`event_type` para que puedas distinguirlos.
+
+El modo se refleja en el resumen por pantalla, que indica el modo («día actual» o
+«mes actual») y la ventana exacta consultada. El archivo de salida por defecto es
+`events-AAAA-MM-DD.{json,csv}` en modo día y `events-AAAA-MM.{json,csv}` en modo mes.
 
 Si una cuenta falla (token caducado/revocado, restricción de la org, red), las
 demás se entregan igualmente y el error se reporta por separado.
