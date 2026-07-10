@@ -6,10 +6,11 @@ from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from calendar_tool.events import (
-    collect_pending_events,
+    collect_events,
     combine_and_sort,
     day_bounds,
     is_pending,
+    month_bounds,
     parse_event,
 )
 from calendar_tool.models import CalendarEvent, CalendarRef
@@ -97,7 +98,7 @@ def test_collect_pending_filtra_y_mapea(now, tz):
     )
     ref = CalendarRef("trabajo", "primary")
     start, end = day_bounds(now)
-    events = collect_pending_events(client, [ref], start, end, now, tz)
+    events = collect_events(client, [ref], start, end, now, tz)
     assert [e.title for e in events] == ["Futuro"]
     # Se consultó con la ventana del día.
     assert client.calls == [("primary", start.isoformat(), end.isoformat())]
@@ -110,12 +111,10 @@ def test_working_location_excluida_por_defecto(now, tz):
     start, end = day_bounds(now)
 
     # Por defecto, las entradas de Ubicación de trabajo no aparecen.
-    assert collect_pending_events(client, [ref], start, end, now, tz) == []
+    assert collect_events(client, [ref], start, end, now, tz) == []
 
-    # Con el flag explícito, sí se incluyen y conservan su event_type.
-    incluidos = collect_pending_events(
-        client, [ref], start, end, now, tz, include_working_location=True
-    )
+    # Con el flag explícito, sí se incluyen y conservan su event_type (aun siendo all-day).
+    incluidos = collect_events(client, [ref], start, end, now, tz, include_working_location=True)
     assert [e.title for e in incluidos] == ["Home"]
     assert incluidos[0].event_type == "workingLocation"
 
@@ -145,3 +144,84 @@ def test_combine_and_sort_ordena_y_desempata():
     ordenado = combine_and_sort([ev("Beta", 10, 11), ev("Alfa", 10, 11), ev("Cero", 9, 10)])
     # Cero empieza antes; Alfa/Beta empatan en inicio y fin -> desempate por título.
     assert [e.title for e in ordenado] == ["Cero", "Alfa", "Beta"]
+
+
+def test_month_bounds_cubre_el_mes_completo(now):
+    # now = 2026-06-29 -> junio.
+    start, end = month_bounds(now)
+    assert (start.year, start.month, start.day) == (2026, 6, 1)
+    assert (start.hour, start.minute, start.second, start.microsecond) == (0, 0, 0, 0)
+    # Fin exclusivo: primer instante del mes siguiente (julio).
+    assert (end.year, end.month, end.day) == (2026, 7, 1)
+    assert (end.hour, end.minute, end.second) == (0, 0, 0)
+    assert start <= now < end
+
+
+def test_month_bounds_salto_de_anio_en_diciembre(tz):
+    start, end = month_bounds(datetime(2026, 12, 15, 9, 0, tzinfo=tz))
+    assert (start.year, start.month, start.day) == (2026, 12, 1)
+    assert (end.year, end.month, end.day) == (2027, 1, 1)
+
+
+def test_month_bounds_longitudes_de_mes(tz):
+    # Febrero no bisiesto (2026) -> el fin cae el 1 de marzo.
+    _, fin_feb = month_bounds(datetime(2026, 2, 10, tzinfo=tz))
+    assert (fin_feb.year, fin_feb.month, fin_feb.day) == (2026, 3, 1)
+    # Febrero bisiesto (2028) -> también el 1 de marzo, sin construir el 29/30.
+    start_bis, fin_bis = month_bounds(datetime(2028, 2, 10, tzinfo=tz))
+    assert (start_bis.month, start_bis.day) == (2, 1)
+    assert (fin_bis.month, fin_bis.day) == (3, 1)
+    # Mes de 31 días (enero) -> el fin cae el 1 de febrero.
+    _, fin_ene = month_bounds(datetime(2026, 1, 5, tzinfo=tz))
+    assert (fin_ene.year, fin_ene.month, fin_ene.day) == (2026, 2, 1)
+
+
+def test_collect_events_modo_mes_incluye_terminados(now, tz):
+    # En modo mes (pending_only=False) se ven también los eventos que ya terminaron.
+    client = FakeCalendarClient(
+        "personal",
+        raw_events={
+            "primary": [
+                raw_event("a", "Pasado", "2026-06-10T08:00:00-07:00", "2026-06-10T09:00:00-07:00"),
+                raw_event("b", "Futuro", "2026-06-29T15:00:00-07:00", "2026-06-29T16:00:00-07:00"),
+            ]
+        },
+    )
+    ref = CalendarRef("personal", "primary")
+    start, end = month_bounds(now)
+    events = collect_events(client, [ref], start, end, now, tz, pending_only=False)
+    assert sorted(e.title for e in events) == ["Futuro", "Pasado"]
+    # Se consultó con la ventana del mes.
+    assert client.calls == [("primary", start.isoformat(), end.isoformat())]
+
+
+def test_collect_events_modo_mes_conserva_evento_a_caballo(now, tz):
+    # El solapamiento con la ventana lo resuelve la API; aquí verificamos que nuestro
+    # filtrado no descarta un evento con hora que cruza el borde del mes.
+    client = FakeCalendarClient(
+        "personal",
+        raw_events={
+            "primary": [
+                raw_event(
+                    "x", "A caballo", "2026-05-31T22:00:00-07:00", "2026-06-01T01:00:00-07:00"
+                ),
+            ]
+        },
+    )
+    ref = CalendarRef("personal", "primary")
+    start, end = month_bounds(now)
+    events = collect_events(client, [ref], start, end, now, tz, pending_only=False)
+    assert [e.title for e in events] == ["A caballo"]
+
+
+def test_collect_events_excluye_all_day_en_ambos_modos(now, tz):
+    festivo = all_day_event("h", "Festivo", "2026-06-29", "2026-06-30")
+    client = FakeCalendarClient("personal", raw_events={"primary": [festivo]})
+    ref = CalendarRef("personal", "primary")
+    day_start, day_end = day_bounds(now)
+    month_start, month_end = month_bounds(now)
+
+    en_dia = collect_events(client, [ref], day_start, day_end, now, tz)
+    en_mes = collect_events(client, [ref], month_start, month_end, now, tz, pending_only=False)
+    assert en_dia == []
+    assert en_mes == []

@@ -16,7 +16,7 @@ from zoneinfo import ZoneInfo
 
 from . import __version__
 from .config import Config, ConfigError, load_config
-from .events import collect_pending_events, combine_and_sort, day_bounds
+from .events import collect_events, combine_and_sort, day_bounds, month_bounds
 from .models import Account, CalendarEvent, CalendarRef
 from .output import write_events
 
@@ -33,7 +33,10 @@ class AccountResult:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="calendar-tool",
-        description="Obtiene en solo lectura los próximos eventos de hoy de Google Calendar.",
+        description=(
+            "Obtiene en solo lectura eventos de Google Calendar: por defecto los "
+            "pendientes de hoy, o todos los del mes actual con --range month."
+        ),
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument(
@@ -52,6 +55,13 @@ def build_parser() -> argparse.ArgumentParser:
         dest="calendars",
         metavar="ID",
         help="Limita a este(os) calendario(s). Repetible.",
+    )
+    parser.add_argument(
+        "--range",
+        choices=("day", "month"),
+        default="day",
+        help="Rango temporal: 'day' (eventos pendientes de hoy, por defecto) o "
+        "'month' (todos los eventos del mes actual).",
     )
     parser.add_argument(
         "--credentials", help="(Modo simple) archivo OAuth client de una sola cuenta."
@@ -125,7 +135,9 @@ def run(args) -> int:
 
     tz = _resolve_timezone(args.timezone or (config.timezone if config else None))
     now = datetime.now(tz)
-    day_start, day_end = day_bounds(now)
+    is_month = args.range == "month"
+    time_min, time_max = month_bounds(now) if is_month else day_bounds(now)
+    pending_only = not is_month
 
     results: list[AccountResult] = []
     for account in accounts:
@@ -135,13 +147,14 @@ def run(args) -> int:
             creds = credentials_for_account(account, allow_interactive=not args.no_interactive)
             client = GoogleCalendarClient.from_credentials(creds, account.name)
             refs = _refs_for_account(client, account, args.calendars)
-            events = collect_pending_events(
+            events = collect_events(
                 client,
                 refs,
-                day_start,
-                day_end,
+                time_min,
+                time_max,
                 now,
                 tz,
+                pending_only=pending_only,
                 include_working_location=args.include_working_location,
             )
             results.append(AccountResult(account.name, events))
@@ -151,20 +164,33 @@ def run(args) -> int:
     all_events = combine_and_sort([e for r in results for e in r.events])
 
     fmt = args.format or (config.output_format if config else "json")
-    output_path = args.output or f"events-{now:%Y-%m-%d}.{fmt}"
+    if args.output:
+        output_path = args.output
+    elif is_month:
+        output_path = f"events-{now:%Y-%m}.{fmt}"
+    else:
+        output_path = f"events-{now:%Y-%m-%d}.{fmt}"
     write_events(all_events, output_path, fmt)
 
-    _print_summary(results, all_events, output_path, fmt)
+    _print_summary(results, all_events, output_path, fmt, args.range, time_min, time_max)
     return 1 if any(r.error for r in results) else 0
 
 
-def _print_summary(results, all_events, output_path, fmt) -> None:
+def _print_summary(results, all_events, output_path, fmt, range_, time_min, time_max) -> None:
     ok = [r for r in results if not r.error]
     failed = [r for r in results if r.error]
+    if range_ == "month":
+        mode_label, count_label = "mes actual", "Eventos del mes"
+    else:
+        mode_label, count_label = "día actual", "Eventos pendientes de hoy"
+    print(
+        f"Modo: {mode_label} | ventana: [{time_min.isoformat()}, {time_max.isoformat()})",
+        file=sys.stderr,
+    )
     print(f"Cuentas leídas: {len(ok)} | con error: {len(failed)}", file=sys.stderr)
     for r in failed:
         print(f"  ⚠ {r.account}: {r.error}", file=sys.stderr)
-    print(f"Eventos pendientes de hoy: {len(all_events)}", file=sys.stderr)
+    print(f"{count_label}: {len(all_events)}", file=sys.stderr)
     print(f"Salida ({fmt}): {output_path}", file=sys.stderr)
 
 
