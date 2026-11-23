@@ -33,10 +33,10 @@ Android (ntfy). El dashboard (`pulse`) queda fuera de alcance.
 
 | ID | Specs | Qué | Ruta | Commit |
 |---|---|---|---|---|
-| T1 | S1, S3, S8 | Rango configurable, campos nuevos (iCalUID, respuesta, transparencia, enlace, updated), extracción reutilizable | inline | — |
-| T2 | S1, S8 | Store SQLite + `calendar-tool sync` + deduplicación | inline | — |
-| T3 | S2, S3, S4, S6, S7, S9 | `calendar-watch`: planificador, conflictos, cuentas sin actualizar, notificación macOS, plists | inline | — |
-| T4 | S5 | Notificador ntfy (JSON, canal secreto en config) | inline | — |
+| T1 | S1, S3, S8 | Rango configurable, campos nuevos (iCalUID, respuesta, transparencia, enlace, updated), extracción reutilizable | inline | 72f7f81 |
+| T2 | S1, S8 | Store SQLite + `calendar-tool sync` + deduplicación | inline | b5e6cff |
+| T3 | S2, S3, S4, S6, S7, S9 | `calendar-watch`: planificador, conflictos, cuentas sin actualizar, notificación macOS, plists | worker | 44b9c19 |
+| T4 | S5 | Notificador ntfy (JSON, canal secreto en config) | inline | accfdd2 |
 
 ## Log
 
@@ -56,3 +56,12 @@ Android (ntfy). El dashboard (`pulse`) queda fuera de alcance.
   (sería un cambio de contrato); `sync`/`watch` reciben `--config` absoluta desde los plists y
   la base de datos vive por defecto en `~/.local/share/calendar-tool/calendar.db`. La zona
   horaria se resuelve en cada ciclo para no desfasarse con el horario de verano.
+- **L5** (verificación): 96 tests en verde; `sync` real (personal, zoox OK; work `invalid_grant`;
+  baires sin autorizar); `calendar-watch --once` real envió 2 avisos de cuenta sin actualizar y
+  1 conflicto real, y el segundo ciclo no repitió; plists válidos (`plutil -lint`).
+- **L6** (revisión nativa, lineage review-f0b59139793fb9dd, b5e6cff..accfdd2, lentes risk,
+  resilience, reliability): aprobada. 12 hallazgos no bloqueantes pendientes como trabajo
+  aparte, los más relevantes: marcar como enviado aunque fallen todos los canales (se pierde la
+  alarma de 1 min), recordatorios enviados después de los conflictos, fallos de ciclo
+  silenciosos (`timezone` sin validar, `--once` devuelve 0), `--log-dir` relativo en plists,
+  enlace sin validar `https`, servidor ntfy `http://` aceptado.
