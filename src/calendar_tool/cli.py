@@ -29,6 +29,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="calendar-tool",
         description="Obtiene en solo lectura los próximos eventos de hoy de Google Calendar.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "subcomandos:\n"
+            "  calendar-tool sync   guarda en SQLite los eventos de las próximas horas\n"
+            "                       (ver: calendar-tool sync --help)"
+        ),
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     parser.add_argument(
@@ -145,6 +151,12 @@ def _print_summary(results, all_events, output_path, fmt) -> None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    if argv[:1] == ["sync"]:
+        from .sync import main as sync_main
+
+        return sync_main(argv[1:])
+
     parser = build_parser()
     args = parser.parse_args(argv)
     if not args.credentials and not args.config and not Path(DEFAULT_CONFIG).is_file():

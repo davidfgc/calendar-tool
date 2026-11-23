@@ -78,6 +78,25 @@ evento del archivo incluye su `event_type` para que puedas distinguirlos.
 Si una cuenta falla (token caducado/revocado, restricción de la org, red), las
 demás se entregan igualmente y el error se reporta por separado.
 
+## Sincronizar a SQLite (`calendar-tool sync`)
+
+Guarda los eventos de las próximas 48 h de todas las cuentas en una base SQLite
+compartida (por defecto `~/.local/share/calendar-tool/calendar.db`). Nunca abre el
+navegador, así que puede ejecutarse desde `launchd`:
+
+```bash
+uv run calendar-tool sync --config "$PWD/accounts.toml"
+uv run calendar-tool sync --config "$PWD/accounts.toml" --hours 24 --db /ruta/calendar.db
+```
+
+- Cada ejecución sustituye los eventos de cada cuenta leída con éxito.
+- Si una cuenta falla, conserva sus últimos eventos y registra el error y la hora del
+  último éxito (tabla `account_sync`); `calendar-watch` avisa si lleva demasiado tiempo
+  sin actualizarse.
+- Las cuentas que se quitan de la config se olvidan.
+- Código de salida: `0` todo bien, `1` alguna cuenta falló, `2` configuración inválida
+  (en ese caso no se toca la base).
+
 ## Desarrollo
 
 ```bash
