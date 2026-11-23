@@ -160,6 +160,11 @@ launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.calendar-tool.watch.
 Para detenerlos: `launchctl bootout gui/$(id -u)/com.calendar-tool.watch` (y `.sync`).
 Los logs quedan en `~/Library/Logs/calendar-tool/`.
 
+## Privacidad y términos
+
+- [Política de privacidad](PRIVACY.md)
+- [Términos de servicio](TERMS.md)
+
 ## Desarrollo
 
 ```bash
