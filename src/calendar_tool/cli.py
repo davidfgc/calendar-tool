@@ -9,25 +9,20 @@ from __future__ import annotations
 
 import argparse
 import sys
-from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from . import __version__
 from .config import Config, ConfigError, load_config
-from .events import collect_pending_events, combine_and_sort, day_bounds
-from .models import Account, CalendarEvent, CalendarRef
+from .events import combine_and_sort, day_bounds, is_pending
+from .fetch import AccountResult, fetch_accounts
+from .models import Account
 from .output import write_events
 
 DEFAULT_CONFIG = "accounts.toml"
 
-
-@dataclass
-class AccountResult:
-    account: str
-    events: list[CalendarEvent] = field(default_factory=list)
-    error: str | None = None
+__all__ = ["AccountResult", "build_parser", "main", "run"]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -106,17 +101,7 @@ def _accounts_from_args(args) -> tuple[list[Account], Config | None]:
     return accounts, config
 
 
-def _refs_for_account(client, account: Account, calendars_override) -> list[CalendarRef]:
-    wanted = calendars_override or account.calendars
-    if wanted:
-        return [CalendarRef(account=account.name, calendar_id=c) for c in wanted]
-    # Sin lista explícita: leer todos los calendarios de la cuenta.
-    return client.list_calendars()
-
-
 def run(args) -> int:
-    from .calendar_client import GoogleCalendarClient
-
     try:
         accounts, config = _accounts_from_args(args)
     except ConfigError as exc:
@@ -127,26 +112,17 @@ def run(args) -> int:
     now = datetime.now(tz)
     day_start, day_end = day_bounds(now)
 
-    results: list[AccountResult] = []
-    for account in accounts:
-        try:
-            from .auth import credentials_for_account
-
-            creds = credentials_for_account(account, allow_interactive=not args.no_interactive)
-            client = GoogleCalendarClient.from_credentials(creds, account.name)
-            refs = _refs_for_account(client, account, args.calendars)
-            events = collect_pending_events(
-                client,
-                refs,
-                day_start,
-                day_end,
-                now,
-                tz,
-                include_working_location=args.include_working_location,
-            )
-            results.append(AccountResult(account.name, events))
-        except Exception as exc:  # aísla el fallo de esta cuenta
-            results.append(AccountResult(account.name, error=str(exc)))
+    results = fetch_accounts(
+        accounts,
+        time_min=day_start,
+        time_max=day_end,
+        tz=tz,
+        allow_interactive=not args.no_interactive,
+        calendars_override=args.calendars,
+        include_working_location=args.include_working_location,
+    )
+    for result in results:
+        result.events = [e for e in result.events if is_pending(e, now)]
 
     all_events = combine_and_sort([e for r in results for e in r.events])
 
