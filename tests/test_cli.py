@@ -58,3 +58,11 @@ def test_calendar_tool_sigue_volcando_solo_pendientes_de_hoy(tmp_path, monkeypat
     # La ventana consultada sigue siendo el día actual.
     day_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     assert client.calls[0][1] == day_start.isoformat()
+
+
+def test_ayuda_ajusta_la_descripcion_y_conserva_el_epilogo(monkeypatch):
+    monkeypatch.setenv("COLUMNS", "80")
+    help_text = cli.build_parser().format_help()
+    assert max(len(line) for line in help_text.splitlines()) <= 80
+    assert "--range month." in help_text
+    assert "  calendar-tool sync   guarda en SQLite" in help_text
