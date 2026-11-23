@@ -51,7 +51,9 @@ def test_replace_borra_los_eventos_que_ya_no_existen(tmp_path):
 def test_events_between_incluye_los_que_estan_en_curso(tmp_path):
     store = Store(tmp_path / "db.sqlite")
     store.replace_account_events("trabajo", [ev("1", 9), ev("2", 15)], synced_at=T0)
-    got = store.events_between(datetime(2026, 6, 29, 9, 30, tzinfo=TZ), datetime(2026, 6, 29, 12, tzinfo=TZ))
+    got = store.events_between(
+        datetime(2026, 6, 29, 9, 30, tzinfo=TZ), datetime(2026, 6, 29, 12, tzinfo=TZ)
+    )
     assert [e.event_id for e in got] == ["1"]
 
 

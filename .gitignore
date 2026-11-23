@@ -262,3 +262,6 @@ pyrightconfig.json
 
 # End of https://www.toptal.com/developers/gitignore/api/macos,python,visualstudiocode,git
 
+
+# Plists de launchd generados (rutas locales absolutas)
+launchd/

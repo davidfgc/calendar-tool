@@ -12,6 +12,7 @@ dependencies = [
 
 [project.scripts]
 calendar-tool = "calendar_tool.cli:main"
+calendar-watch = "calendar_tool.watch:main"
 
 [build-system]
 requires = ["hatchling"]

@@ -97,6 +97,46 @@ uv run calendar-tool sync --config "$PWD/accounts.toml" --hours 24 --db /ruta/ca
 - Código de salida: `0` todo bien, `1` alguna cuenta falló, `2` configuración inválida
   (en ese caso no se toca la base).
 
+## Avisos (`calendar-watch`)
+
+Comando aparte que lee la base SQLite (la llena `calendar-tool sync`) y avisa con una
+notificación de macOS con sonido:
+
+- **Recordatorios** 10 y 1 minuto antes de cada reunión, con el enlace (Meet/Zoom/Teams)
+  cuando existe; al pulsar la notificación se abre (requiere `terminal-notifier`; sin él
+  se usa `osascript`).
+- **Conflictos** entre reuniones que se solapan, una sola vez por conflicto.
+- **Cuenta sin actualizar** si lleva más de 15 min sin sincronizar con éxito.
+- Se ignoran: reuniones rechazadas, marcadas como disponibles, de todo el día,
+  ubicación de trabajo y fuera de la oficina.
+
+```bash
+uv run calendar-watch --config accounts.toml          # bucle (cada 15 s)
+uv run calendar-watch --config accounts.toml --once   # un solo ciclo
+```
+
+Opciones: `--db`, `--interval SEGUNDOS`, `--once`. Ajustes opcionales en `accounts.toml`:
+
+```toml
+[watch]
+reminders = [10, 1]        # minutos antes
+stale_after_minutes = 15
+```
+
+### Arranque automático con launchd
+
+`sync` cada 2 min y `watch` siempre encendido. Genera los plists (no instala nada):
+
+```bash
+uv run calendar-watch launchd --config accounts.toml   # escribe launchd/*.plist
+cp launchd/*.plist ~/Library/LaunchAgents/
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.calendar-tool.sync.plist
+launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/com.calendar-tool.watch.plist
+```
+
+Para detenerlos: `launchctl bootout gui/$(id -u)/com.calendar-tool.watch` (y `.sync`).
+Los logs quedan en `~/Library/Logs/calendar-tool/`.
+
 ## Desarrollo
 
 ```bash
