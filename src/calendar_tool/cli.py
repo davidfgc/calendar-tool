@@ -28,8 +28,10 @@ __all__ = ["AccountResult", "build_parser", "main", "run"]
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="calendar-tool",
+        # Saltos manuales: RawDescriptionHelpFormatter (necesario para el epílogo) no
+        # ajusta la descripción.
         description=(
-            "Obtiene en solo lectura eventos de Google Calendar: por defecto los "
+            "Obtiene en solo lectura eventos de Google Calendar: por defecto los\n"
             "pendientes de hoy, o todos los del mes actual con --range month."
         ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
