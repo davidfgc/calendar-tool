@@ -95,7 +95,33 @@ class MacNotifier:
 
 
 def build_notifiers(config) -> list:
-    return [MacNotifier()]
+    notifiers: list = [MacNotifier()]
+    if config.ntfy:
+        from .ntfy import NtfyNotifier
+
+        notifiers.append(NtfyNotifier(config.ntfy.topic, server=config.ntfy.server))
+    return notifiers
+
+
+def send_test(notifiers: list) -> int:
+    """Envía un aviso de prueba por cada canal e informa cuál funciona."""
+    alert = Alert(
+        kind="reminder",
+        title="Prueba de calendar-watch",
+        message="Si ves esto, los avisos funcionan.",
+        marks=(),
+        priority=3,
+    )
+    failed = False
+    for notifier in notifiers:
+        name = type(notifier).__name__
+        try:
+            notifier.send(alert)
+            print(f"✓ {name}")
+        except Exception as exc:
+            failed = True
+            print(f"✗ {name}: {exc}", file=sys.stderr)
+    return 1 if failed else 0
 
 
 def _positive_int(value: str) -> int:
@@ -120,6 +146,11 @@ def build_parser() -> argparse.ArgumentParser:
         help=f"Segundos entre ciclos (por defecto {DEFAULT_INTERVAL}).",
     )
     parser.add_argument("--once", action="store_true", help="Ejecuta un solo ciclo y termina.")
+    parser.add_argument(
+        "--test",
+        action="store_true",
+        help="Envía un aviso de prueba por cada canal (macOS, ntfy) y termina.",
+    )
     return parser
 
 
@@ -237,6 +268,9 @@ def main(argv: list[str] | None = None) -> int:
     except ConfigError as exc:
         print(f"Error de configuración: {exc}", file=sys.stderr)
         return 2
+
+    if args.test:
+        return send_test(build_notifiers(config))
 
     store = Store(args.db)
     notifiers = build_notifiers(config)

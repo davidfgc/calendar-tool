@@ -24,12 +24,46 @@ class WatchConfig:
     stale_after_minutes: int = 15
 
 
+@dataclass(frozen=True)
+class NtfyConfig:
+    """Canal ntfy para avisos en Android (tabla opcional [notify.ntfy])."""
+
+    topic: str
+    server: str = "https://ntfy.sh"
+
+
 @dataclass
 class Config:
     accounts: list[Account]
     timezone: str | None = None
     output_format: str = DEFAULT_OUTPUT_FORMAT
     watch: WatchConfig = field(default_factory=WatchConfig)
+    ntfy: NtfyConfig | None = None
+
+
+def _parse_ntfy(notify: object) -> NtfyConfig | None:
+    from .ntfy import validate_topic
+
+    if notify is None:
+        return None
+    if not isinstance(notify, dict):
+        raise ConfigError("[notify] debe ser una tabla.")
+    raw = notify.get("ntfy")
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ConfigError("[notify.ntfy] debe ser una tabla.")
+    topic = raw.get("topic")
+    if not topic:
+        raise ConfigError("notify.ntfy.topic es obligatorio")
+    try:
+        validate_topic(topic)
+    except ValueError as exc:
+        raise ConfigError(str(exc)) from exc
+    server = raw.get("server", NtfyConfig.server)
+    if not isinstance(server, str) or not server.startswith(("https://", "http://")):
+        raise ConfigError("notify.ntfy.server debe ser una URL http(s)")
+    return NtfyConfig(topic=topic, server=server)
 
 
 def _is_positive_int(value: object) -> bool:
@@ -105,4 +139,5 @@ def load_config(path: str | Path) -> Config:
         timezone=data.get("timezone"),
         output_format=output_format,
         watch=_parse_watch(data.get("watch")),
+        ntfy=_parse_ntfy(data.get("notify")),
     )

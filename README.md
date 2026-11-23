@@ -115,13 +115,36 @@ uv run calendar-watch --config accounts.toml          # bucle (cada 15 s)
 uv run calendar-watch --config accounts.toml --once   # un solo ciclo
 ```
 
-Opciones: `--db`, `--interval SEGUNDOS`, `--once`. Ajustes opcionales en `accounts.toml`:
+Opciones: `--db`, `--interval SEGUNDOS`, `--once`, `--test` (envía un aviso de prueba por
+cada canal y termina). Ajustes opcionales en `accounts.toml`:
 
 ```toml
 [watch]
 reminders = [10, 1]        # minutos antes
 stale_after_minutes = 15
 ```
+
+### Avisos en Android (ntfy)
+
+Instala la app **ntfy** en Android, suscríbete a un canal con un nombre largo y aleatorio
+y añádelo a `accounts.toml` (ignorado por git):
+
+```toml
+[notify.ntfy]
+topic = "cal-xxxxxxxxxxxxxxxxxxxx"   # mínimo 20 caracteres [A-Za-z0-9_-]
+# server = "https://ntfy.sh"         # o tu servidor propio
+```
+
+```bash
+python3 -c "import secrets; print('cal-' + secrets.token_urlsafe(18))"  # generar un nombre
+uv run calendar-watch --config accounts.toml --test                     # comprobar
+```
+
+> En `ntfy.sh` público, cualquiera que conozca el nombre del canal puede leer los avisos,
+> que incluyen el título de cada reunión. Por eso el nombre debe ser largo y secreto.
+
+El aviso de 1 min llega con prioridad urgente y un botón **Unirme** con el enlace. Si
+la app de tus gafas replica las notificaciones del teléfono, también los recibirá.
 
 ### Arranque automático con launchd
 
