@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import tomllib
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from .models import Account
@@ -16,11 +16,77 @@ class ConfigError(Exception):
     """La configuración está ausente o es inválida."""
 
 
+@dataclass(frozen=True)
+class WatchConfig:
+    """Ajustes de calendar-watch (tabla opcional [watch])."""
+
+    reminders: tuple[int, ...] = (10, 1)
+    stale_after_minutes: int = 15
+
+
+@dataclass(frozen=True)
+class NtfyConfig:
+    """Canal ntfy para avisos en Android (tabla opcional [notify.ntfy])."""
+
+    topic: str
+    server: str = "https://ntfy.sh"
+
+
 @dataclass
 class Config:
     accounts: list[Account]
     timezone: str | None = None
     output_format: str = DEFAULT_OUTPUT_FORMAT
+    watch: WatchConfig = field(default_factory=WatchConfig)
+    ntfy: NtfyConfig | None = None
+
+
+def _parse_ntfy(notify: object) -> NtfyConfig | None:
+    from .ntfy import validate_topic
+
+    if notify is None:
+        return None
+    if not isinstance(notify, dict):
+        raise ConfigError("[notify] debe ser una tabla.")
+    raw = notify.get("ntfy")
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ConfigError("[notify.ntfy] debe ser una tabla.")
+    topic = raw.get("topic")
+    if not topic:
+        raise ConfigError("notify.ntfy.topic es obligatorio")
+    try:
+        validate_topic(topic)
+    except ValueError as exc:
+        raise ConfigError(str(exc)) from exc
+    server = raw.get("server", NtfyConfig.server)
+    if not isinstance(server, str) or not server.startswith(("https://", "http://")):
+        raise ConfigError("notify.ntfy.server debe ser una URL http(s)")
+    return NtfyConfig(topic=topic, server=server)
+
+
+def _is_positive_int(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value > 0
+
+
+def _parse_watch(raw: object) -> WatchConfig:
+    if raw is None:
+        return WatchConfig()
+    if not isinstance(raw, dict):
+        raise ConfigError("[watch] debe ser una tabla.")
+    defaults = WatchConfig()
+    reminders = raw.get("reminders", list(defaults.reminders))
+    if (
+        not isinstance(reminders, list)
+        or not reminders
+        or not all(_is_positive_int(item) for item in reminders)
+    ):
+        raise ConfigError("watch.reminders debe ser una lista de minutos positivos")
+    stale = raw.get("stale_after_minutes", defaults.stale_after_minutes)
+    if not _is_positive_int(stale):
+        raise ConfigError("watch.stale_after_minutes debe ser un entero positivo")
+    return WatchConfig(reminders=tuple(reminders), stale_after_minutes=stale)
 
 
 def _expand(path: str | None) -> str | None:
@@ -72,4 +138,6 @@ def load_config(path: str | Path) -> Config:
         accounts=accounts,
         timezone=data.get("timezone"),
         output_format=output_format,
+        watch=_parse_watch(data.get("watch")),
+        ntfy=_parse_ntfy(data.get("notify")),
     )

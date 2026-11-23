@@ -6,6 +6,7 @@ testearlo sin red ni reloj real.
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timedelta, tzinfo
 
 from .calendar_client import CalendarClient
@@ -14,6 +15,12 @@ from .models import CalendarEvent, CalendarRef
 # eventType de Google para las entradas de "Ubicación de trabajo" (Home/Office).
 # No son eventos a los que se asista; se excluyen por defecto.
 WORKING_LOCATION = "workingLocation"
+
+# Enlaces de videollamada reconocidos en ubicación/descripción.
+_MEETING_URL = re.compile(
+    r"https://(?:[\w-]+\.)?(?:zoom\.us|teams\.microsoft\.com|teams\.live\.com|meet\.google\.com"
+    r"|webex\.com)/[^\s\"'<>]+"
+)
 
 
 def day_bounds(now: datetime) -> tuple[datetime, datetime]:
@@ -63,6 +70,7 @@ def parse_event(raw: dict, ref: CalendarRef, tz: tzinfo) -> CalendarEvent | None
     start, all_day = _parse_dt(start_field, tz)
     end, _ = _parse_dt(end_field, tz)
     attendees = tuple(a["email"] for a in raw.get("attendees", []) if a.get("email"))
+    own = next((a for a in raw.get("attendees", []) if a.get("self")), {})
     return CalendarEvent(
         account=ref.account,
         calendar_id=ref.calendar_id,
@@ -75,7 +83,26 @@ def parse_event(raw: dict, ref: CalendarRef, tz: tzinfo) -> CalendarEvent | None
         location=raw.get("location", ""),
         hangout_link=raw.get("hangoutLink", ""),
         attendees=attendees,
+        ical_uid=raw.get("iCalUID", ""),
+        response_status=own.get("responseStatus", ""),
+        transparency=raw.get("transparency", "opaque"),
+        conference_link=conference_link(raw),
+        updated=raw.get("updated", ""),
     )
+
+
+def conference_link(raw: dict) -> str:
+    """Mejor enlace para unirse: hangoutLink, conferenceData (video) o URL en el texto."""
+    if raw.get("hangoutLink"):
+        return raw["hangoutLink"]
+    for entry in raw.get("conferenceData", {}).get("entryPoints", []):
+        if entry.get("entryPointType") == "video" and entry.get("uri"):
+            return entry["uri"]
+    for text in (raw.get("location", ""), raw.get("description", "")):
+        match = _MEETING_URL.search(text or "")
+        if match:
+            return match.group(0)
+    return ""
 
 
 def is_pending(event: CalendarEvent, now: datetime) -> bool:
@@ -103,6 +130,40 @@ def collect_events(
       ``include_working_location`` sea True; solo entonces se incluyen, aun siendo
       eventos de todo el día.
     """
+    events = fetch_window_events(client, refs, time_min, time_max, tz, include_working_location)
+    return select_events(events, now, pending_only=pending_only)
+
+
+def select_events(
+    events: list[CalendarEvent], now: datetime, pending_only: bool = True
+) -> list[CalendarEvent]:
+    """Filtro de salida de `calendar-tool`: quita los eventos de todo el día (salvo la
+    Ubicación de trabajo, que ya viene filtrada por su flag) y, con ``pending_only``,
+    los que ya terminaron.
+    """
+    return [
+        e
+        for e in events
+        if (e.event_type == WORKING_LOCATION or not e.all_day)
+        and (not pending_only or is_pending(e, now))
+    ]
+
+
+def fetch_window_events(
+    client: CalendarClient,
+    refs: list[CalendarRef],
+    time_min: datetime,
+    time_max: datetime,
+    tz: tzinfo,
+    include_working_location: bool = False,
+) -> list[CalendarEvent]:
+    """Obtiene los eventos de los calendarios dados en la ventana [time_min, time_max).
+
+    Sin filtrar por pendiente ni por todo el día (lo usa `calendar-tool sync`). Google
+    devuelve los eventos cuyo fin es posterior a ``time_min``, de modo que los eventos
+    en curso se incluyen. La Ubicación de trabajo se excluye salvo
+    ``include_working_location``.
+    """
     collected: list[CalendarEvent] = []
     for ref in refs:
         raw_events = client.list_raw_events(
@@ -112,14 +173,7 @@ def collect_events(
             event = parse_event(raw, ref, tz)
             if not event:
                 continue
-            # La Ubicación de trabajo (all-day) tiene su propio flag y se evalúa antes
-            # que la exclusión general de all-day para no romper ese comportamiento.
-            if event.event_type == WORKING_LOCATION:
-                if not include_working_location:
-                    continue
-            elif event.all_day:
-                continue
-            if pending_only and not is_pending(event, now):
+            if event.event_type == WORKING_LOCATION and not include_working_location:
                 continue
             collected.append(event)
     return collected

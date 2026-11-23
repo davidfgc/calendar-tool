@@ -42,3 +42,12 @@ class CalendarEvent:
     location: str = ""
     hangout_link: str = ""
     attendees: tuple[str, ...] = ()
+    # Identificador compartido entre las copias de la misma reunión en distintas cuentas.
+    ical_uid: str = ""
+    # Respuesta del propio usuario: accepted | declined | tentative | needsAction | "".
+    response_status: str = ""
+    # "opaque" = ocupado; "transparent" = disponible.
+    transparency: str = "opaque"
+    # Mejor enlace para unirse (Meet, Zoom, Teams…), o "" si no hay.
+    conference_link: str = ""
+    updated: str = ""

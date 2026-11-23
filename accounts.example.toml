@@ -28,3 +28,14 @@ calendars = ["primary"]
 # service_account_file = "~/.config/calendar-tool/cliente_x_sa.json"
 # subject = "tu-usuario@cliente-x.com"
 # calendars = ["primary"]
+
+# --- Avisos de calendar-watch (opcional) ---
+# [watch]
+# reminders = [10, 1]        # minutos antes de cada reunión
+# stale_after_minutes = 15   # avisar si una cuenta lleva más de esto sin sincronizar
+
+# --- Avisos en Android vía ntfy (opcional) ---
+# El nombre del canal es secreto: quien lo conozca puede leer los avisos en ntfy.sh.
+# [notify.ntfy]
+# topic = "cal-cambia-esto-por-un-nombre-aleatorio"
+# server = "https://ntfy.sh"

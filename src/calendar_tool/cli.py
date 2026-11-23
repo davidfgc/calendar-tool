@@ -9,25 +9,20 @@ from __future__ import annotations
 
 import argparse
 import sys
-from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
 from . import __version__
 from .config import Config, ConfigError, load_config
-from .events import collect_events, combine_and_sort, day_bounds, month_bounds
-from .models import Account, CalendarEvent, CalendarRef
+from .events import combine_and_sort, day_bounds, month_bounds, select_events
+from .fetch import AccountResult, fetch_accounts
+from .models import Account
 from .output import write_events
 
 DEFAULT_CONFIG = "accounts.toml"
 
-
-@dataclass
-class AccountResult:
-    account: str
-    events: list[CalendarEvent] = field(default_factory=list)
-    error: str | None = None
+__all__ = ["AccountResult", "build_parser", "main", "run"]
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -36,6 +31,12 @@ def build_parser() -> argparse.ArgumentParser:
         description=(
             "Obtiene en solo lectura eventos de Google Calendar: por defecto los "
             "pendientes de hoy, o todos los del mes actual con --range month."
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "subcomandos:\n"
+            "  calendar-tool sync   guarda en SQLite los eventos de las próximas horas\n"
+            "                       (ver: calendar-tool sync --help)"
         ),
     )
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -116,17 +117,7 @@ def _accounts_from_args(args) -> tuple[list[Account], Config | None]:
     return accounts, config
 
 
-def _refs_for_account(client, account: Account, calendars_override) -> list[CalendarRef]:
-    wanted = calendars_override or account.calendars
-    if wanted:
-        return [CalendarRef(account=account.name, calendar_id=c) for c in wanted]
-    # Sin lista explícita: leer todos los calendarios de la cuenta.
-    return client.list_calendars()
-
-
 def run(args) -> int:
-    from .calendar_client import GoogleCalendarClient
-
     try:
         accounts, config = _accounts_from_args(args)
     except ConfigError as exc:
@@ -139,27 +130,17 @@ def run(args) -> int:
     time_min, time_max = month_bounds(now) if is_month else day_bounds(now)
     pending_only = not is_month
 
-    results: list[AccountResult] = []
-    for account in accounts:
-        try:
-            from .auth import credentials_for_account
-
-            creds = credentials_for_account(account, allow_interactive=not args.no_interactive)
-            client = GoogleCalendarClient.from_credentials(creds, account.name)
-            refs = _refs_for_account(client, account, args.calendars)
-            events = collect_events(
-                client,
-                refs,
-                time_min,
-                time_max,
-                now,
-                tz,
-                pending_only=pending_only,
-                include_working_location=args.include_working_location,
-            )
-            results.append(AccountResult(account.name, events))
-        except Exception as exc:  # aísla el fallo de esta cuenta
-            results.append(AccountResult(account.name, error=str(exc)))
+    results = fetch_accounts(
+        accounts,
+        time_min=time_min,
+        time_max=time_max,
+        tz=tz,
+        allow_interactive=not args.no_interactive,
+        calendars_override=args.calendars,
+        include_working_location=args.include_working_location,
+    )
+    for result in results:
+        result.events = select_events(result.events, now, pending_only=pending_only)
 
     all_events = combine_and_sort([e for r in results for e in r.events])
 
@@ -195,6 +176,12 @@ def _print_summary(results, all_events, output_path, fmt, range_, time_min, time
 
 
 def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    if argv[:1] == ["sync"]:
+        from .sync import main as sync_main
+
+        return sync_main(argv[1:])
+
     parser = build_parser()
     args = parser.parse_args(argv)
     if not args.credentials and not args.config and not Path(DEFAULT_CONFIG).is_file():
