@@ -10,7 +10,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import datetime, tzinfo
 
-from .events import collect_events
+from .events import fetch_window_events
 from .models import Account, CalendarEvent, CalendarRef
 
 
@@ -62,7 +62,9 @@ def fetch_accounts(
             creds = credentials_fn(account, allow_interactive=allow_interactive)
             client = client_fn(creds, account.name)
             refs = refs_for_account(client, account, calendars_override)
-            events = collect_events(client, refs, time_min, time_max, tz, include_working_location)
+            events = fetch_window_events(
+                client, refs, time_min, time_max, tz, include_working_location
+            )
             results.append(AccountResult(account.name, events))
         except Exception as exc:  # aísla el fallo de esta cuenta
             results.append(AccountResult(account.name, error=str(exc)))

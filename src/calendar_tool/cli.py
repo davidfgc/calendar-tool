@@ -15,7 +15,7 @@ from zoneinfo import ZoneInfo
 
 from . import __version__
 from .config import Config, ConfigError, load_config
-from .events import combine_and_sort, day_bounds, is_pending
+from .events import combine_and_sort, day_bounds, month_bounds, select_events
 from .fetch import AccountResult, fetch_accounts
 from .models import Account
 from .output import write_events
@@ -28,7 +28,10 @@ __all__ = ["AccountResult", "build_parser", "main", "run"]
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="calendar-tool",
-        description="Obtiene en solo lectura los próximos eventos de hoy de Google Calendar.",
+        description=(
+            "Obtiene en solo lectura eventos de Google Calendar: por defecto los "
+            "pendientes de hoy, o todos los del mes actual con --range month."
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "subcomandos:\n"
@@ -53,6 +56,13 @@ def build_parser() -> argparse.ArgumentParser:
         dest="calendars",
         metavar="ID",
         help="Limita a este(os) calendario(s). Repetible.",
+    )
+    parser.add_argument(
+        "--range",
+        choices=("day", "month"),
+        default="day",
+        help="Rango temporal: 'day' (eventos pendientes de hoy, por defecto) o "
+        "'month' (todos los eventos del mes actual).",
     )
     parser.add_argument(
         "--credentials", help="(Modo simple) archivo OAuth client de una sola cuenta."
@@ -116,37 +126,52 @@ def run(args) -> int:
 
     tz = _resolve_timezone(args.timezone or (config.timezone if config else None))
     now = datetime.now(tz)
-    day_start, day_end = day_bounds(now)
+    is_month = args.range == "month"
+    time_min, time_max = month_bounds(now) if is_month else day_bounds(now)
+    pending_only = not is_month
 
     results = fetch_accounts(
         accounts,
-        time_min=day_start,
-        time_max=day_end,
+        time_min=time_min,
+        time_max=time_max,
         tz=tz,
         allow_interactive=not args.no_interactive,
         calendars_override=args.calendars,
         include_working_location=args.include_working_location,
     )
     for result in results:
-        result.events = [e for e in result.events if is_pending(e, now)]
+        result.events = select_events(result.events, now, pending_only=pending_only)
 
     all_events = combine_and_sort([e for r in results for e in r.events])
 
     fmt = args.format or (config.output_format if config else "json")
-    output_path = args.output or f"events-{now:%Y-%m-%d}.{fmt}"
+    if args.output:
+        output_path = args.output
+    elif is_month:
+        output_path = f"events-{now:%Y-%m}.{fmt}"
+    else:
+        output_path = f"events-{now:%Y-%m-%d}.{fmt}"
     write_events(all_events, output_path, fmt)
 
-    _print_summary(results, all_events, output_path, fmt)
+    _print_summary(results, all_events, output_path, fmt, args.range, time_min, time_max)
     return 1 if any(r.error for r in results) else 0
 
 
-def _print_summary(results, all_events, output_path, fmt) -> None:
+def _print_summary(results, all_events, output_path, fmt, range_, time_min, time_max) -> None:
     ok = [r for r in results if not r.error]
     failed = [r for r in results if r.error]
+    if range_ == "month":
+        mode_label, count_label = "mes actual", "Eventos del mes"
+    else:
+        mode_label, count_label = "día actual", "Eventos pendientes de hoy"
+    print(
+        f"Modo: {mode_label} | ventana: [{time_min.isoformat()}, {time_max.isoformat()})",
+        file=sys.stderr,
+    )
     print(f"Cuentas leídas: {len(ok)} | con error: {len(failed)}", file=sys.stderr)
     for r in failed:
         print(f"  ⚠ {r.account}: {r.error}", file=sys.stderr)
-    print(f"Eventos pendientes de hoy: {len(all_events)}", file=sys.stderr)
+    print(f"{count_label}: {len(all_events)}", file=sys.stderr)
     print(f"Salida ({fmt}): {output_path}", file=sys.stderr)
 
 

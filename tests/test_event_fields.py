@@ -6,7 +6,7 @@ from datetime import datetime, timedelta
 
 import pytest
 
-from calendar_tool.events import collect_events, parse_event
+from calendar_tool.events import fetch_window_events, parse_event
 from calendar_tool.fetch import fetch_accounts
 from calendar_tool.models import Account, CalendarRef
 from fakes import FakeCalendarClient, raw_event
@@ -84,7 +84,7 @@ def test_sin_enlace(tz):
     assert ev.conference_link == ""
 
 
-def test_collect_events_no_filtra_por_pendiente_y_usa_la_ventana(now, tz):
+def test_fetch_window_events_no_filtra_por_pendiente_y_usa_la_ventana(now, tz):
     client = FakeCalendarClient(
         "trabajo",
         raw_events={
@@ -95,7 +95,7 @@ def test_collect_events_no_filtra_por_pendiente_y_usa_la_ventana(now, tz):
         },
     )
     time_min, time_max = now, now + timedelta(hours=48)
-    events = collect_events(client, [REF], time_min, time_max, tz)
+    events = fetch_window_events(client, [REF], time_min, time_max, tz)
     assert [e.title for e in events] == ["Pasado", "Mañana"]
     assert client.calls == [("primary", time_min.isoformat(), time_max.isoformat())]
 
